@@ -12,6 +12,8 @@ import {
 } from './firebaseService';
 import { logoutUser, onAuthChange } from './authService';
 import AuthPage from './AuthPage';
+import ExportRecipeButton from './ExportRecipeButton';
+import ExportAllButton from './ExportAllButton';
 
 export default function RecipeSaver() {
   const [user, setUser] = useState(null);
@@ -883,6 +885,11 @@ ${recipe.steps ? recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Voir
             </div>
           </div>
           <p className={`${textSecondaryClass} font-medium`}>Sauvegarde tes recettes préférées ✨</p>
+          {(activeTab === 'recipes' || activeTab === 'cocktails') && (
+            <div className="mt-4 flex justify-center">
+              <ExportAllButton recipes={activeTab === 'recipes' ? recipes : cocktails} darkMode={darkMode} />
+            </div>
+          )}
         </div>
 
         <div className={`${cardClass} rounded-2xl shadow-xl mb-6 p-2`}>
@@ -1128,7 +1135,7 @@ function RecipeCard({ recipe, darkMode, onSelect, onToggleFavorite, onShare, onC
           {recipe.note && <BookOpen className="text-orange-500" size={16} />}
         </div>
 
-        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity flex-wrap">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -1180,6 +1187,10 @@ function RecipeCard({ recipe, darkMode, onSelect, onToggleFavorite, onShare, onC
           >
             <Trash2 size={16} />
           </button>
+        </div>
+        
+        <div className="mt-3 pt-3 border-t" style={darkMode ? {borderColor: 'rgba(255,255,255,0.1)'} : {borderColor: 'rgba(0,0,0,0.1)'}}>
+          <ExportRecipeButton recipe={recipe} darkMode={darkMode} />
         </div>
       </div>
     </div>
