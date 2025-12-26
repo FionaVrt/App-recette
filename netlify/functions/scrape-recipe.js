@@ -2,6 +2,63 @@ const https = require('https');
 const http = require('http');
 const url = require('url');
 
+// Parser spécifique Marmiton (pas de JSON-LD)
+function parseMarmiton(html, sourceUrl) {
+    try {
+        // Récupérer le titre
+        const titleMatch = html.match(/<h1[^>]*class="[^"]*recipe__title[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
+                          html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+        const title = titleMatch ? titleMatch[1].trim() : '';
+
+        // Récupérer les ingrédients (entre <ul> et </ul> avec classe ingredient)
+        const ingredientMatch = html.match(/<ul[^>]*class="[^"]*ingredients[^"]*"[^>]*>([\s\S]*?)<\/ul>/i);
+        let ingredients = [];
+        if (ingredientMatch) {
+            const ingList = ingredientMatch[1];
+            const ingMatches = ingList.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
+            ingredients = ingMatches.map(li => {
+                const text = li.replace(/<[^>]+>/g, '').trim();
+                return {
+                    quantity: '',
+                    unit: '',
+                    name: text
+                };
+            }).filter(i => i.name);
+        }
+
+        // Récupérer les étapes (articles ou divs avec classe step/instruction)
+        const stepsMatch = html.match(/<article[^>]*class="[^"]*recipe__step[^"]*"[^>]*>([\s\S]*?)<\/article>/gi) ||
+                          html.match(/<div[^>]*class="[^"]*recipe__step[^"]*"[^>]*>([\s\S]*?)<\/div>/gi);
+        let steps = [];
+        if (stepsMatch) {
+            steps = stepsMatch.map(step => {
+                const text = step.replace(/<[^>]+>/g, '').trim();
+                return text.replace(/\s+/g, ' ');
+            }).filter(s => s.length > 5);
+        }
+
+        // Si au moins le titre et les ingrédients sont trouvés
+        if (title && ingredients.length > 0) {
+            return {
+                title: title,
+                ingredients: ingredients,
+                steps: steps,
+                prepTime: '',
+                portions: 4,
+                category: 'plat',
+                source: sourceUrl,
+                videoLink: '',
+                notes: ''
+            };
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Marmiton parse error:', error);
+        return null;
+    }
+}
+
 // Parser JSON-LD pour extraire les recettes
 function parseRecipeFromHTML(html, sourceUrl) {
     try {
@@ -200,7 +257,18 @@ exports.handler = async (event, context) => {
         // Fetch et parse
         console.log('Scraping:', urlParam);
         const html = await fetchURL(urlParam);
-        const recipe = parseRecipeFromHTML(html, urlParam);
+        
+        let recipe = null;
+
+        // Essayer d'abord Marmiton si c'est un lien Marmiton
+        if (urlParam.includes('marmiton.org')) {
+            recipe = parseMarmiton(html, urlParam);
+        }
+
+        // Sinon essayer JSON-LD
+        if (!recipe) {
+            recipe = parseRecipeFromHTML(html, urlParam);
+        }
 
         if (!recipe) {
             return {
