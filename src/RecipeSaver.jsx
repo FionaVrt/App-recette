@@ -123,12 +123,34 @@ export default function RecipeSaver() {
 
   const loadRecipes = async () => {
     try {
+      // Charger depuis localStorage en premier (plus rapide)
+      try {
+        const savedRecipes = localStorage.getItem('recipes');
+        if (savedRecipes) {
+          setRecipes(JSON.parse(savedRecipes));
+        }
+      } catch (err) {
+        console.log('Pas de recettes en localStorage');
+      }
+
+      // Puis charger depuis Firebase (synchroniser avec le cloud)
       const unsubscribe = await loadRecipesFromFirebase((recipes) => {
         setRecipes(recipes);
+        // Sauvegarder aussi en localStorage comme backup
+        try {
+          localStorage.setItem('recipes', JSON.stringify(recipes));
+        } catch (err) {
+          console.log('localStorage plein');
+        }
       });
       
       const unsubscribeCocktails = await loadCocktailsFromFirebase((cocktails) => {
         setCocktails(cocktails);
+        try {
+          localStorage.setItem('cocktails', JSON.stringify(cocktails));
+        } catch (err) {
+          console.log('localStorage plein');
+        }
       });
 
       // Cleanup on unmount
@@ -137,7 +159,14 @@ export default function RecipeSaver() {
         unsubscribeCocktails && unsubscribeCocktails();
       };
     } catch (error) {
-      console.log('Première utilisation ou erreur connexion');
+      console.log('Erreur chargement recettes:', error);
+      // Charger depuis localStorage comme fallback
+      try {
+        const saved = localStorage.getItem('recipes');
+        if (saved) setRecipes(JSON.parse(saved));
+      } catch (err) {
+        console.log('Impossible de charger les recettes');
+      }
     }
   };
 
@@ -212,7 +241,20 @@ Réponds UNIQUEMENT avec un JSON dans ce format exact (sans markdown, sans backt
 
       const updatedRecipes = [recipe, ...recipes];
       setRecipes(updatedRecipes);
-      await addRecipeToFirebase(recipe);
+      
+      // Sauvegarder en localStorage immédiatement
+      try {
+        localStorage.setItem('recipes', JSON.stringify(updatedRecipes));
+      } catch (err) {
+        console.log('localStorage plein');
+      }
+
+      // Puis Firebase
+      try {
+        await addRecipeToFirebase(recipe);
+      } catch (err) {
+        console.log('Erreur Firebase:', err);
+      }
       
       setUrl('');
       setActiveTab('recipes');
@@ -356,7 +398,20 @@ Réponds UNIQUEMENT avec un JSON dans ce format exact (sans markdown, sans backt
 
     const updatedRecipes = [newRecipe, ...recipes];
     setRecipes(updatedRecipes);
-    await addRecipeToFirebase(newRecipe);
+    
+    // Sauvegarder en localStorage immédiatement
+    try {
+      localStorage.setItem('recipes', JSON.stringify(updatedRecipes));
+    } catch (err) {
+      console.log('localStorage plein');
+    }
+
+    // Puis sauvegarder dans Firebase
+    try {
+      await addRecipeToFirebase(newRecipe);
+    } catch (err) {
+      console.log('Erreur Firebase:', err);
+    }
     
     setShowManualRecipeForm(false);
     showNotification('Recette ajoutée manuellement ! 🎉');
@@ -543,7 +598,21 @@ ${recipe.steps ? recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Voir
         };
         const updatedRecipes = [newRecipe, ...recipes];
         setRecipes(updatedRecipes);
-        await addRecipeToFirebase(newRecipe);
+        
+        // Sauvegarder en localStorage immédiatement
+        try {
+          localStorage.setItem('recipes', JSON.stringify(updatedRecipes));
+        } catch (err) {
+          console.log('localStorage plein');
+        }
+
+        // Puis Firebase
+        try {
+          await addRecipeToFirebase(newRecipe);
+        } catch (err) {
+          console.log('Erreur Firebase:', err);
+        }
+        
         showNotification('Recette importée ! 🎉');
         setActiveTab('recipes');
       } else {
