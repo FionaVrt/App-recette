@@ -43,6 +43,7 @@ export default function RecipeSaver() {
   const [cocktailType, setCocktailType] = useState('sans-alcool');
   const [selectedCocktailCategory, setSelectedCocktailCategory] = useState('all');
   const [showManualRecipeForm, setShowManualRecipeForm] = useState(false);
+  const [selectedRecipeIds, setSelectedRecipeIds] = useState([]);
 
   const categories = [
     { id: 'all', name: 'Tout', emoji: '🍽️' },
@@ -360,6 +361,126 @@ Réponds UNIQUEMENT avec un JSON dans ce format exact (sans markdown, sans backt
     setShowManualRecipeForm(false);
     showNotification('Recette ajoutée manuellement ! 🎉');
     setActiveTab('recipes');
+  };
+
+  const toggleRecipeSelection = (recipeId) => {
+    setSelectedRecipeIds(prev => 
+      prev.includes(recipeId) 
+        ? prev.filter(id => id !== recipeId)
+        : [...prev, recipeId]
+    );
+  };
+
+  const exportSelectedRecipes = async () => {
+    const selectedRecipesData = recipes.filter(r => selectedRecipeIds.includes(r.id));
+    if (selectedRecipesData.length === 0) {
+      showNotification('❌ Sélectionne au moins une recette');
+      return;
+    }
+
+    // Utilise ExportAllButton avec les recettes sélectionnées
+    // (on va créer un component ou utiliser directement jsPDF)
+    const { jsPDF } = await import('jspdf');
+    const html2canvas = (await import('html2canvas')).default;
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    
+    // Cover page
+    doc.setFontSize(28);
+    doc.text('📋 Mes Recettes Sélectionnées', 105, 50, { align: 'center' });
+    doc.setFontSize(14);
+    doc.text(`${selectedRecipesData.length} recette(s)`, 105, 80, { align: 'center' });
+    
+    let pageNum = 2;
+
+    for (const recipe of selectedRecipesData) {
+      doc.addPage();
+      
+      doc.setFontSize(20);
+      doc.text(recipe.title, 20, 20);
+      
+      let yPos = 35;
+      doc.setFontSize(11);
+
+      // Temps et portions
+      if (recipe.prepTime || recipe.portions) {
+        doc.setFont(undefined, 'bold');
+        doc.text('Informations:', 20, yPos);
+        yPos += 7;
+        doc.setFont(undefined, 'normal');
+        if (recipe.prepTime) doc.text(`⏱️ Temps: ${recipe.prepTime}`, 25, yPos), (yPos += 6);
+        if (recipe.portions) doc.text(`👥 Portions: ${recipe.portions}`, 25, yPos), (yPos += 6);
+      }
+
+      // Ingrédients
+      if (recipe.ingredients && recipe.ingredients.length > 0) {
+        yPos += 5;
+        doc.setFont(undefined, 'bold');
+        doc.text('Ingrédients:', 20, yPos);
+        yPos += 7;
+        doc.setFont(undefined, 'normal');
+
+        recipe.ingredients.forEach(ing => {
+          const text = typeof ing === 'string' 
+            ? ing 
+            : `${ing.quantity} ${ing.unit} ${ing.name}`.trim();
+          
+          const splitText = doc.splitTextToSize(`• ${text}`, 170);
+          splitText.forEach(line => {
+            if (yPos > 280) {
+              doc.addPage();
+              yPos = 20;
+            }
+            doc.text(line, 25, yPos);
+            yPos += 6;
+          });
+        });
+      }
+
+      // Étapes
+      if (recipe.steps && recipe.steps.length > 0) {
+        yPos += 5;
+        doc.setFont(undefined, 'bold');
+        doc.text('Étapes:', 20, yPos);
+        yPos += 7;
+        doc.setFont(undefined, 'normal');
+
+        recipe.steps.forEach((step, idx) => {
+          const text = `${idx + 1}. ${step}`;
+          const splitText = doc.splitTextToSize(text, 170);
+          splitText.forEach(line => {
+            if (yPos > 280) {
+              doc.addPage();
+              yPos = 20;
+            }
+            doc.text(line, 25, yPos);
+            yPos += 6;
+          });
+        });
+      }
+
+      // Notes
+      if (recipe.notes) {
+        yPos += 5;
+        doc.setFont(undefined, 'bold');
+        doc.text('Notes:', 20, yPos);
+        yPos += 7;
+        doc.setFont(undefined, 'normal');
+        const splitText = doc.splitTextToSize(recipe.notes, 170);
+        splitText.forEach(line => {
+          if (yPos > 280) {
+            doc.addPage();
+            yPos = 20;
+          }
+          doc.text(line, 25, yPos);
+          yPos += 6;
+        });
+      }
+    }
+
+    doc.save('recettes-selectionnees.pdf');
+    showNotification(`📥 ${selectedRecipesData.length} recette(s) exportée(s) !`);
+    setSelectedRecipeIds([]);
   };
 
   const shareRecipe = async (recipe) => {
@@ -1104,6 +1225,8 @@ ${recipe.steps ? recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Voir
                       onShare={shareRecipe}
                       onCopy={copyRecipeData}
                       onDelete={deleteRecipe}
+                      isSelected={selectedRecipeIds.includes(recipe.id)}
+                      onToggleSelection={toggleRecipeSelection}
                     />
                   ))}
                 </div>
@@ -1145,10 +1268,32 @@ ${recipe.steps ? recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Voir
                       onShare={shareRecipe}
                       onCopy={copyRecipeData}
                       onDelete={deleteRecipe}
+                      isSelected={selectedRecipeIds.includes(recipe.id)}
+                      onToggleSelection={toggleRecipeSelection}
                     />
                   ))}
                 </div>
               </>
+            )}
+
+            {selectedRecipeIds.length > 0 && (
+              <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 flex gap-3 p-4 rounded-full shadow-2xl" style={darkMode ? {backgroundColor: '#1f2937'} : {backgroundColor: '#ffffff'}}>
+                <div className={`font-semibold px-4 py-2 rounded-full flex items-center gap-2 ${darkMode ? 'bg-orange-600 text-white' : 'bg-orange-100 text-orange-600'}`}>
+                  ✓ {selectedRecipeIds.length} sélectionnée{selectedRecipeIds.length > 1 ? 's' : ''}
+                </div>
+                <button
+                  onClick={exportSelectedRecipes}
+                  className="px-4 py-2 rounded-full bg-gradient-to-r from-orange-400 to-rose-400 text-white font-bold hover:shadow-lg transition-all flex items-center gap-2"
+                >
+                  📥 Exporter PDF
+                </button>
+                <button
+                  onClick={() => setSelectedRecipeIds([])}
+                  className={`px-4 py-2 rounded-full font-bold transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                >
+                  ✕ Annuler
+                </button>
+              </div>
             )}
           </>
         )}
@@ -1157,7 +1302,7 @@ ${recipe.steps ? recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Voir
   );
 }
 
-function RecipeCard({ recipe, darkMode, onSelect, onToggleFavorite, onShare, onCopy, onDelete }) {
+function RecipeCard({ recipe, darkMode, onSelect, onToggleFavorite, onShare, onCopy, onDelete, isSelected, onToggleSelection }) {
   const categories = {
     entree: '🥗',
     plat: '🍝',
@@ -1166,8 +1311,18 @@ function RecipeCard({ recipe, darkMode, onSelect, onToggleFavorite, onShare, onC
   };
 
   return (
-    <div className={`${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur rounded-2xl shadow-lg hover:shadow-2xl transition-all overflow-hidden group`}>
-      <div className="bg-gradient-to-r from-orange-400 to-rose-400 h-2 group-hover:h-3 transition-all"></div>
+    <div className={`${darkMode ? 'bg-gray-800/90' : 'bg-white/90'} backdrop-blur rounded-2xl shadow-lg hover:shadow-2xl transition-all overflow-hidden group relative`}>
+      {onToggleSelection && (
+        <div className="absolute top-3 left-3 z-10">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelection(recipe.id)}
+            className="w-5 h-5 cursor-pointer accent-orange-500"
+          />
+        </div>
+      )}
+      <div className={`bg-gradient-to-r from-orange-400 to-rose-400 h-2 group-hover:h-3 transition-all ${isSelected ? 'ring-2 ring-orange-500' : ''}`}></div>
       <div 
         className="p-6 cursor-pointer"
         onClick={() => onSelect(recipe)}
