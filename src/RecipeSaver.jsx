@@ -363,15 +363,20 @@ Réponds UNIQUEMENT avec un JSON dans ce format exact (sans markdown, sans backt
   };
 
   const shareRecipe = async (recipe) => {
+    const formatIngredients = recipe.ingredients.map(i => {
+      if (typeof i === 'string') return `• ${i}`;
+      return `• ${i.quantity} ${i.unit} ${i.name}`.replace(/\s+/g, ' ').trim();
+    }).join('\n');
+
     const recipeText = `🍳 ${recipe.title}
 
 📝 Ingrédients:
-${recipe.ingredients.map(i => `• ${i}`).join('\n')}
+${formatIngredients}
 
 👩‍🍳 Étapes:
 ${recipe.steps ? recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Voir le lien'}
 
-🔗 Source: ${recipe.source}`;
+🔗 Source: ${recipe.source || 'Recette personnelle'}`;
 
     try {
       if (navigator.share) {
@@ -1175,7 +1180,10 @@ function RecipeCard({ recipe, darkMode, onSelect, onToggleFavorite, onShare, onC
         </div>
         
         <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'} text-sm mb-4 line-clamp-2`}>
-          {recipe.ingredients.slice(0, 3).join(' • ')}
+          {recipe.ingredients.slice(0, 3).map(i => {
+            if (typeof i === 'string') return i;
+            return `${i.quantity} ${i.unit} ${i.name}`.trim();
+          }).join(' • ')}
           {recipe.ingredients.length > 3 && '...'}
         </p>
 
