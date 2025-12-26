@@ -14,6 +14,8 @@ import { logoutUser, onAuthChange } from './authService';
 import AuthPage from './AuthPage';
 import ExportRecipeButton from './ExportRecipeButton';
 import ExportAllButton from './ExportAllButton';
+import RecipeForm from './RecipeForm';
+import RecipeDetail from './RecipeDetail';
 
 export default function RecipeSaver() {
   const [user, setUser] = useState(null);
@@ -40,6 +42,7 @@ export default function RecipeSaver() {
   const [cocktailIngredients, setCocktailIngredients] = useState('');
   const [cocktailType, setCocktailType] = useState('sans-alcool');
   const [selectedCocktailCategory, setSelectedCocktailCategory] = useState('all');
+  const [showManualRecipeForm, setShowManualRecipeForm] = useState(false);
 
   const categories = [
     { id: 'all', name: 'Tout', emoji: '🍽️' },
@@ -340,6 +343,23 @@ Réponds UNIQUEMENT avec un JSON dans ce format exact (sans markdown, sans backt
     // Détection automatique
     const detectedType = detectAlcohol(value);
     setCocktailType(detectedType);
+  };
+
+  const handleSaveManualRecipe = async (formData) => {
+    const newRecipe = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      favorite: false,
+      ...formData
+    };
+
+    const updatedRecipes = [newRecipe, ...recipes];
+    setRecipes(updatedRecipes);
+    await addRecipeToFirebase(newRecipe);
+    
+    setShowManualRecipeForm(false);
+    showNotification('Recette ajoutée manuellement ! 🎉');
+    setActiveTab('recipes');
   };
 
   const shareRecipe = async (recipe) => {
@@ -939,45 +959,74 @@ ${recipe.steps ? recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Voir
         {activeTab === 'add' && (
           <div className="space-y-4">
             <div className={`${cardClass} rounded-3xl shadow-2xl p-8`}>
-              <h2 className={`text-2xl font-bold mb-6 ${textClass} text-center`}>
-                Ajoute une nouvelle recette
-              </h2>
-              <div className="space-y-4">
-                <div>
-                  <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
-                    Lien de la recette
-                  </label>
-                  <input
-                    type="url"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="Colle le lien ici..."
-                    className={`w-full p-4 border-2 rounded-2xl focus:border-orange-400 focus:outline-none text-lg transition-colors ${
-                      darkMode 
-                        ? 'bg-gray-700 border-gray-600 text-white' 
-                        : 'bg-white border-gray-200'
-                    }`}
-                    disabled={loading}
-                  />
-                </div>
+              <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">
                 <button
-                  onClick={extractRecipe}
-                  disabled={loading || !url.trim()}
-                  className="w-full bg-gradient-to-r from-orange-400 to-rose-400 hover:from-orange-500 hover:to-rose-500 disabled:from-gray-300 disabled:to-gray-300 text-white rounded-2xl p-4 font-bold text-lg flex items-center justify-center gap-3 shadow-xl transition-all disabled:shadow-none"
+                  onClick={() => setShowManualRecipeForm(false)}
+                  className={`pb-4 px-4 font-semibold border-b-2 transition-all ${
+                    !showManualRecipeForm 
+                      ? 'border-orange-500 text-orange-600' 
+                      : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                  }`}
                 >
-                  {loading ? (
-                    <>
-                      <Loader className="animate-spin" size={24} />
-                      Extraction en cours...
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={24} />
-                      Extraire la recette
-                    </>
-                  )}
+                  🔗 Depuis un lien
+                </button>
+                <button
+                  onClick={() => setShowManualRecipeForm(true)}
+                  className={`pb-4 px-4 font-semibold border-b-2 transition-all ${
+                    showManualRecipeForm 
+                      ? 'border-orange-500 text-orange-600' 
+                      : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                  }`}
+                >
+                  ✍️ Créer une recette
                 </button>
               </div>
+
+              {showManualRecipeForm ? (
+                <RecipeForm onSave={handleSaveManualRecipe} darkMode={darkMode} />
+              ) : (
+                <>
+                  <h2 className={`text-2xl font-bold mb-6 ${textClass} text-center`}>
+                    Ajoute une nouvelle recette
+                  </h2>
+                  <div className="space-y-4">
+                    <div>
+                      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                        Lien de la recette
+                      </label>
+                      <input
+                        type="url"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="Colle le lien ici..."
+                        className={`w-full p-4 border-2 rounded-2xl focus:border-orange-400 focus:outline-none text-lg transition-colors ${
+                          darkMode 
+                            ? 'bg-gray-700 border-gray-600 text-white' 
+                            : 'bg-white border-gray-200'
+                        }`}
+                        disabled={loading}
+                      />
+                    </div>
+                    <button
+                      onClick={extractRecipe}
+                      disabled={loading || !url.trim()}
+                      className="w-full bg-gradient-to-r from-orange-400 to-rose-400 hover:from-orange-500 hover:to-rose-500 disabled:from-gray-300 disabled:to-gray-300 text-white rounded-2xl p-4 font-bold text-lg flex items-center justify-center gap-3 shadow-xl transition-all disabled:shadow-none"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader className="animate-spin" size={24} />
+                          Extraction en cours...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={24} />
+                          Extraire la recette
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className={`${cardClass} rounded-3xl shadow-2xl p-8`}>
