@@ -5,42 +5,87 @@ const url = require('url');
 // Parser JSON-LD pour extraire les recettes
 function parseRecipeFromHTML(html, sourceUrl) {
     try {
-        // Chercher JSON-LD
-        const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-        if (jsonLdMatch) {
-            const jsonLd = JSON.parse(jsonLdMatch[1]);
+        // Chercher tous les JSON-LD
+        const jsonLdMatches = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) || [];
+        let recipeData = null;
 
-            let recipeData = null;
-            if (jsonLd['@type'] === 'Recipe') {
-                recipeData = jsonLd;
-            } else if (jsonLd['@graph']) {
-                recipeData = jsonLd['@graph'].find(item => item['@type'] === 'Recipe');
+        for (const match of jsonLdMatches) {
+            const jsonContent = match.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1];
+            try {
+                const jsonLd = JSON.parse(jsonContent);
+
+                // Chercher Recipe dans @type
+                if (jsonLd['@type'] === 'Recipe') {
+                    recipeData = jsonLd;
+                    break;
+                }
+
+                // Chercher dans @graph
+                if (jsonLd['@graph']) {
+                    const found = jsonLd['@graph'].find(item => item['@type'] === 'Recipe' || item.type === 'Recipe');
+                    if (found) {
+                        recipeData = found;
+                        break;
+                    }
+                }
+
+                // Chercher dans les properties
+                if (jsonLd.recipe) {
+                    recipeData = jsonLd.recipe;
+                    break;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+
+        if (recipeData) {
+            // Parser les instructions (plusieurs formats possibles)
+            let steps = [];
+            if (recipeData.recipeInstructions) {
+                if (Array.isArray(recipeData.recipeInstructions)) {
+                    steps = recipeData.recipeInstructions
+                        .map(instruction => {
+                            if (typeof instruction === 'string') return instruction;
+                            if (instruction.text) return instruction.text;
+                            if (instruction.description) return instruction.description;
+                            return '';
+                        })
+                        .filter(Boolean);
+                } else if (typeof recipeData.recipeInstructions === 'string') {
+                    steps = [recipeData.recipeInstructions];
+                } else if (recipeData.recipeInstructions.text) {
+                    steps = [recipeData.recipeInstructions.text];
+                }
             }
 
-            if (recipeData) {
-                return {
-                    title: recipeData.name || '',
-                    ingredients: (recipeData.recipeIngredient || []).map(ing => {
+            // Parser les ingrédients
+            let ingredients = [];
+            if (recipeData.recipeIngredient) {
+                ingredients = recipeData.recipeIngredient.map(ing => {
+                    if (typeof ing === 'string') {
                         const parts = ing.trim().match(/^([\d.,\s\/-]+)?\s*([a-z]*\.?)?\s*(.+)$/i) || ['', '', '', ing];
                         return {
                             quantity: parts[1]?.trim() || '',
                             unit: parts[2]?.trim() || '',
                             name: parts[3]?.trim() || ing.trim()
                         };
-                    }).filter(i => i.name),
-                    steps: (recipeData.recipeInstructions || []).map(instruction => {
-                        if (typeof instruction === 'string') return instruction;
-                        if (instruction.text) return instruction.text;
-                        return '';
-                    }).filter(Boolean),
-                    prepTime: recipeData.prepTime ? recipeData.prepTime.replace('PT', '').toLowerCase() : '',
-                    portions: recipeData.recipeYield ? parseInt(recipeData.recipeYield) || 4 : 4,
-                    category: 'plat',
-                    source: sourceUrl,
-                    videoLink: recipeData.video?.url || '',
-                    notes: recipeData.description || ''
-                };
+                    }
+                    return ing;
+                }).filter(i => i.name || i);
             }
+
+            return {
+                title: recipeData.name || '',
+                ingredients: ingredients,
+                steps: steps,
+                prepTime: recipeData.prepTime ? recipeData.prepTime.replace('PT', '').toLowerCase() : '',
+                portions: recipeData.recipeYield ? parseInt(recipeData.recipeYield) || 4 : 4,
+                category: 'plat',
+                source: sourceUrl,
+                videoLink: recipeData.video?.url || '',
+                notes: recipeData.description || ''
+            };
         }
 
         // Fallback: extraction basique
