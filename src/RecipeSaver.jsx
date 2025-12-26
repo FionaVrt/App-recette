@@ -191,81 +191,15 @@ export default function RecipeSaver() {
     
     setLoading(true);
     try {
-      // Utiliser un proxy CORS gratuit pour contourner les restrictions
-      const corsProxy = 'https://cors-anywhere.herokuapp.com/';
-      const response = await fetch(corsProxy + url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-
-      if (!response.ok) {
-        // Essayer sans proxy pour certains sites
-        const directResponse = await fetch(url);
-        if (!directResponse.ok) throw new Error('Impossible de récupérer le lien');
-      }
-
-      const html = await response.text();
+      // Appeler la Netlify Function
+      const response = await fetch(`/.netlify/functions/scrape-recipe?url=${encodeURIComponent(url)}`);
       
-      // Chercher le JSON-LD (schema.org Recipe)
-      const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-      let recipe = null;
-
-      if (jsonLdMatch) {
-        const jsonLd = JSON.parse(jsonLdMatch[1]);
-        
-        // Trouver le schema Recipe dans le JSON-LD
-        let recipeData = null;
-        if (jsonLd['@type'] === 'Recipe') {
-          recipeData = jsonLd;
-        } else if (jsonLd['@graph']) {
-          recipeData = jsonLd['@graph'].find(item => item['@type'] === 'Recipe');
-        }
-
-        if (recipeData) {
-          recipe = {
-            title: recipeData.name || '',
-            ingredients: (recipeData.recipeIngredient || []).map(ing => {
-              // Parser le format "quantité unité ingrédient"
-              const parts = ing.trim().match(/^([\d.,\s\/-]+)?\s*([a-z]+)?\s+(.+)$/i) || [null, '', '', ing];
-              return {
-                quantity: parts[1]?.trim() || '',
-                unit: parts[2]?.trim() || '',
-                name: parts[3]?.trim() || ing.trim()
-              };
-            }),
-            steps: (recipeData.recipeInstructions || []).map(instruction => {
-              if (typeof instruction === 'string') return instruction;
-              if (instruction.text) return instruction.text;
-              return '';
-            }).filter(Boolean),
-            prepTime: recipeData.prepTime ? recipeData.prepTime.replace('PT', '').toLowerCase() : '',
-            portions: recipeData.recipeYield ? parseInt(recipeData.recipeYield) : 4,
-            category: 'plat',
-            source: url,
-            videoLink: recipeData.video?.url || '',
-            notes: recipeData.description || ''
-          };
-        }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Impossible d\'extraire cette recette');
       }
 
-      if (!recipe) {
-        // Fallback: extraction basique du HTML
-        const titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/i) || 
-                          html.match(/<title>([^<]+)<\/title>/i);
-        
-        recipe = {
-          title: titleMatch ? titleMatch[1].split('|')[0].trim() : 'Recette sans titre',
-          ingredients: [],
-          steps: [],
-          prepTime: '',
-          portions: 4,
-          category: 'plat',
-          source: url,
-          videoLink: '',
-          notes: 'Recette extraite manuellement - complète les informations manquantes'
-        };
-      }
+      const recipe = await response.json();
 
       // Créer et sauvegarder la recette
       const newRecipe = {
@@ -294,10 +228,10 @@ export default function RecipeSaver() {
       
       setUrl('');
       setActiveTab('recipes');
-      showNotification('Recette ajoutée ! 🎉 Complète les informations si besoin');
+      showNotification('Recette ajoutée ! 🎉 Complète les infos si besoin');
     } catch (error) {
       console.error(error);
-      showNotification("⚠️ Impossible d'extraire cette recette. Crée-la manuellement ! 👉 ✍️");
+      showNotification(`⚠️ ${error.message}. Crée-la manuellement ! 👉 ✍️`);
     } finally {
       setLoading(false);
     }
