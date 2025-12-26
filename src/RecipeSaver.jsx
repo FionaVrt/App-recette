@@ -189,82 +189,11 @@ export default function RecipeSaver() {
   const extractRecipe = async () => {
     if (!url.trim()) return;
     
-    setLoading(true);
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": "YOUR_ANTHROPIC_API_KEY"
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [
-            { 
-              role: "user", 
-              content: `Extrait les informations de cette recette depuis l'URL : ${url}
-
-IMPORTANT : Traduis TOUT en français si la recette est dans une autre langue.
-
-Réponds UNIQUEMENT avec un JSON dans ce format exact (sans markdown, sans backticks) :
-{
-  "title": "titre de la recette EN FRANÇAIS",
-  "ingredients": ["ingrédient 1 EN FRANÇAIS", "ingrédient 2 EN FRANÇAIS"],
-  "steps": ["étape 1 EN FRANÇAIS", "étape 2 EN FRANÇAIS"],
-  "source": "${url}"
-}`
-            }
-          ]
-        })
-      });
-
-      const data = await response.json();
-      const textContent = data.content
-        .filter(item => item.type === "text")
-        .map(item => item.text)
-        .join("\n");
-      
-      const cleanText = textContent.replace(/```json|```/g, "").trim();
-      const recipeData = JSON.parse(cleanText);
-      
-      const recipe = {
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-        favorite: false,
-        category: 'plat',
-        note: '',
-        prepTime: '',
-        portions: 4,
-        ...recipeData
-      };
-
-      const updatedRecipes = [recipe, ...recipes];
-      setRecipes(updatedRecipes);
-      
-      // Sauvegarder en localStorage immédiatement
-      try {
-        localStorage.setItem('recipes', JSON.stringify(updatedRecipes));
-      } catch (err) {
-        console.log('localStorage plein');
-      }
-
-      // Puis Firebase
-      try {
-        await addRecipeToFirebase(recipe);
-      } catch (err) {
-        console.log('Erreur Firebase:', err);
-      }
-      
-      setUrl('');
-      setActiveTab('recipes');
-      showNotification('Recette ajoutée ! 🎉');
-    } catch (error) {
-      showNotification("❌ Impossible d'extraire la recette");
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+    showNotification("⚠️ Cette fonctionnalité n'est pas encore active. Crée la recette manuellement ! 👉 ✍️ Créer une recette");
+    return;
+    
+    // API extraction désactivée pour éviter les erreurs CORS
+    // Utilise plutôt le formulaire manuel "✍️ Créer une recette"
   };
 
   const toggleFavorite = async (recipe) => {
