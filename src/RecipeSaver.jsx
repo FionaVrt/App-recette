@@ -42,6 +42,7 @@ export default function RecipeSaver() {
   const [cocktailIngredients, setCocktailIngredients] = useState('');
   const [cocktailType, setCocktailType] = useState('sans-alcool');
   const [selectedCocktailCategory, setSelectedCocktailCategory] = useState('all');
+  const [showManualRecipeForm, setShowManualRecipeForm] = useState(false);
   const [selectedRecipeIds, setSelectedRecipeIds] = useState([]);
 
   const categories = [
@@ -188,11 +189,118 @@ export default function RecipeSaver() {
   const extractRecipe = async () => {
     if (!url.trim()) return;
     
-    showNotification("⚠️ Cette fonctionnalité n'est pas encore active. Crée la recette manuellement ! 👉 ✍️ Créer une recette");
-    return;
-    
-    // API extraction désactivée pour éviter les erreurs CORS
-    // Utilise plutôt le formulaire manuel "✍️ Créer une recette"
+    setLoading(true);
+    try {
+      // Utiliser un proxy CORS gratuit pour contourner les restrictions
+      const corsProxy = 'https://cors-anywhere.herokuapp.com/';
+      const response = await fetch(corsProxy + url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      if (!response.ok) {
+        // Essayer sans proxy pour certains sites
+        const directResponse = await fetch(url);
+        if (!directResponse.ok) throw new Error('Impossible de récupérer le lien');
+      }
+
+      const html = await response.text();
+      
+      // Chercher le JSON-LD (schema.org Recipe)
+      const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+      let recipe = null;
+
+      if (jsonLdMatch) {
+        const jsonLd = JSON.parse(jsonLdMatch[1]);
+        
+        // Trouver le schema Recipe dans le JSON-LD
+        let recipeData = null;
+        if (jsonLd['@type'] === 'Recipe') {
+          recipeData = jsonLd;
+        } else if (jsonLd['@graph']) {
+          recipeData = jsonLd['@graph'].find(item => item['@type'] === 'Recipe');
+        }
+
+        if (recipeData) {
+          recipe = {
+            title: recipeData.name || '',
+            ingredients: (recipeData.recipeIngredient || []).map(ing => {
+              // Parser le format "quantité unité ingrédient"
+              const parts = ing.trim().match(/^([\d.,\s\/-]+)?\s*([a-z]+)?\s+(.+)$/i) || [null, '', '', ing];
+              return {
+                quantity: parts[1]?.trim() || '',
+                unit: parts[2]?.trim() || '',
+                name: parts[3]?.trim() || ing.trim()
+              };
+            }),
+            steps: (recipeData.recipeInstructions || []).map(instruction => {
+              if (typeof instruction === 'string') return instruction;
+              if (instruction.text) return instruction.text;
+              return '';
+            }).filter(Boolean),
+            prepTime: recipeData.prepTime ? recipeData.prepTime.replace('PT', '').toLowerCase() : '',
+            portions: recipeData.recipeYield ? parseInt(recipeData.recipeYield) : 4,
+            category: 'plat',
+            source: url,
+            videoLink: recipeData.video?.url || '',
+            notes: recipeData.description || ''
+          };
+        }
+      }
+
+      if (!recipe) {
+        // Fallback: extraction basique du HTML
+        const titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/i) || 
+                          html.match(/<title>([^<]+)<\/title>/i);
+        
+        recipe = {
+          title: titleMatch ? titleMatch[1].split('|')[0].trim() : 'Recette sans titre',
+          ingredients: [],
+          steps: [],
+          prepTime: '',
+          portions: 4,
+          category: 'plat',
+          source: url,
+          videoLink: '',
+          notes: 'Recette extraite manuellement - complète les informations manquantes'
+        };
+      }
+
+      // Créer et sauvegarder la recette
+      const newRecipe = {
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        favorite: false,
+        ...recipe
+      };
+
+      const updatedRecipes = [newRecipe, ...recipes];
+      setRecipes(updatedRecipes);
+      
+      // Sauvegarder en localStorage
+      try {
+        localStorage.setItem('recipes', JSON.stringify(updatedRecipes));
+      } catch (err) {
+        console.log('localStorage plein');
+      }
+
+      // Puis Firebase
+      try {
+        await addRecipeToFirebase(newRecipe);
+      } catch (err) {
+        console.log('Erreur Firebase:', err);
+      }
+      
+      setUrl('');
+      setActiveTab('recipes');
+      showNotification('Recette ajoutée ! 🎉 Complète les informations si besoin');
+    } catch (error) {
+      console.error(error);
+      showNotification("⚠️ Impossible d'extraire cette recette. Crée-la manuellement ! 👉 ✍️");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleFavorite = async (recipe) => {
@@ -1082,10 +1190,77 @@ ${recipe.steps ? recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : 'Voir
         {activeTab === 'add' && (
           <div className="space-y-4">
             <div className={`${cardClass} rounded-3xl shadow-2xl p-8`}>
-              <h2 className={`text-2xl font-bold mb-6 ${textClass} text-center`}>
-                ✍️ Créer une nouvelle recette
-              </h2>
-              <RecipeForm onSave={handleSaveManualRecipe} darkMode={darkMode} />
+              <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={() => setShowManualRecipeForm(false)}
+                  className={`pb-4 px-4 font-semibold border-b-2 transition-all ${
+                    !showManualRecipeForm 
+                      ? 'border-orange-500 text-orange-600' 
+                      : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                  }`}
+                >
+                  🔗 Depuis un lien
+                </button>
+                <button
+                  onClick={() => setShowManualRecipeForm(true)}
+                  className={`pb-4 px-4 font-semibold border-b-2 transition-all ${
+                    showManualRecipeForm 
+                      ? 'border-orange-500 text-orange-600' 
+                      : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                  }`}
+                >
+                  ✍️ Créer une recette
+                </button>
+              </div>
+
+              {showManualRecipeForm ? (
+                <RecipeForm onSave={handleSaveManualRecipe} darkMode={darkMode} />
+              ) : (
+                <>
+                  <h2 className={`text-2xl font-bold mb-6 ${textClass} text-center`}>
+                    Ajoute une nouvelle recette
+                  </h2>
+                  <div className="space-y-4">
+                    <div>
+                      <label className={`block text-sm font-medium ${textSecondaryClass} mb-2`}>
+                        Lien de la recette
+                      </label>
+                      <input
+                        type="url"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="Ex: https://www.recette.com/..."
+                        className={`w-full p-4 border-2 rounded-2xl focus:border-orange-400 focus:outline-none text-lg transition-colors ${
+                          darkMode 
+                            ? 'bg-gray-700 border-gray-600 text-white' 
+                            : 'bg-white border-gray-200'
+                        }`}
+                        disabled={loading}
+                      />
+                      <p className={`text-xs ${textSecondaryClass} mt-2`}>
+                        ⚡ Fonctionne mieux avec les sites populaires (Marmiton, 750g, RecipeSchema.org, etc.)
+                      </p>
+                    </div>
+                    <button
+                      onClick={extractRecipe}
+                      disabled={loading || !url.trim()}
+                      className="w-full bg-gradient-to-r from-orange-400 to-rose-400 hover:from-orange-500 hover:to-rose-500 disabled:from-gray-300 disabled:to-gray-300 text-white rounded-2xl p-4 font-bold text-lg flex items-center justify-center gap-3 shadow-xl transition-all disabled:shadow-none"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader className="animate-spin" size={24} />
+                          Extraction en cours...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={24} />
+                          Extraire la recette
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className={`${cardClass} rounded-3xl shadow-2xl p-8`}>
